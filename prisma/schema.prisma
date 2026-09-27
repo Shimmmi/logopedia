@@ -1,0 +1,692 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SPEECH_THERAPIST
+  ADMIN
+  ASSISTANT
+}
+
+enum Plan {
+  FREE
+  PRO
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+}
+
+enum PupilStatus {
+  ACTIVE
+  PAUSED
+  GRADUATED
+  ARCHIVE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum TagCategory {
+  DIAGNOSIS
+  DIRECTION
+  ORGANIZATIONAL
+  CUSTOM
+}
+
+enum EventType {
+  DIAGNOSTICS
+  INDIVIDUAL
+  GROUP
+  CONSULTATION
+}
+
+enum EventStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELED
+  ABSENT
+  RESCHEDULED
+}
+
+enum ExceptionAction {
+  SKIP
+  MODIFY
+}
+
+enum FileKind {
+  DOC
+  AUDIO
+  IMAGE
+  OTHER
+  PMPK
+}
+
+enum AnalysisStatus {
+  NONE
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum PicturePosition {
+  START
+  MIDDLE
+  END
+}
+
+enum ImageSetKind {
+  SOUND_CARDS
+  ODD_ONE
+  LOTO
+  COLORING
+  STORY
+}
+
+enum ImageJobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum GenerationKind {
+  DIAGNOSTICS
+  PROGRAM
+  CONCLUSION
+  TASKS
+}
+
+enum AnalysisSource {
+  DOC
+  AUDIO
+  PMPK
+}
+
+enum NotifyPref {
+  EMAIL
+  PUSH
+  NONE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  CANCELED
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  passwordHash       String?
+  name               String
+  position           String    @default("Учитель-логопед")
+  institution        String    @default("")
+  phone              String?
+  photoPath          String?
+  role               Role      @default(SPEECH_THERAPIST)
+  emailVerifiedAt    DateTime?
+  backupEmail        String?
+  totpSecret         String?
+  totpEnabled        Boolean   @default(false)
+  notifyPref         NotifyPref @default(EMAIL)
+  a11yLargeText      Boolean   @default(false)
+  a11yHighContrast   Boolean   @default(false)
+  a11yReduceMotion   Boolean   @default(false)
+  aiPmpkConsentAt    DateTime?
+  aiPmpkAutoAnalyze  Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  onboardingDone     Boolean   @default(false)
+  pdConsentAt        DateTime?
+  timezone           String    @default("Europe/Moscow")
+  invitedById        String?
+  invitedBy          User?     @relation("Invites", fields: [invitedById], references: [id])
+  invitees           User[]    @relation("Invites")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+
+  identities       AuthIdentity[]
+  emailCodes       EmailCode[]
+  passwordResets   PasswordReset[]
+  sessions         Session[]
+  subscription     Subscription?
+  payments         Payment[]
+  pupils           Pupil[]
+  tags             Tag[]
+  notes            PupilNote[]
+  progress         PupilProgress[]
+  events           ScheduleEvent[]
+  waitlist         WaitlistEntry[]
+  workingHours     WorkingHours[]
+  vacations        Vacation[]
+  folders          Folder[]
+  documents        Document[]
+  analyses         AiAnalysis[]
+  usage            AiUsage[]
+  generations      AiGeneration[]
+  library          SpeechMaterial[]
+  savedFilters     SavedFilter[]
+  feedback         Feedback[]
+  notifications    Notification[]
+  pushSubs         PushSubscription[]
+  auditLogs        AuditLog[]
+  attachments      PupilAttachment[]
+  totpBackupCodes  TotpBackupCode[]
+  imageSets        AiImageSet[]
+  images           AiImage[]
+  pictureWords     PictureWord[]
+}
+
+model AuthIdentity {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider    String
+  providerUid String
+  createdAt   DateTime @default(now())
+
+  @@unique([provider, providerUid])
+}
+
+model EmailCode {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  purpose   String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  userAgent  String?
+  ip         String?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+}
+
+model TotpBackupCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Subscription {
+  id               String             @id @default(cuid())
+  userId           String             @unique
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan             Plan               @default(FREE)
+  status           SubscriptionStatus @default(ACTIVE)
+  currentPeriodEnd DateTime?
+  paymentProvider  String             @default("manual")
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan        Plan
+  amountKop   Int
+  status      PaymentStatus @default(PENDING)
+  provider    String
+  providerId  String?
+  createdAt   DateTime      @default(now())
+}
+
+model Pupil {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName        String
+  photoPath       String?
+  birthDate       DateTime?
+  gender          Gender?
+  school          String?
+  grade           String?
+  enrolledAt      DateTime    @default(now())
+  parentName      String?
+  parentPhone     String?
+  parentEmail     String?
+  diagnosisEnc    String?
+  pmpkDate        DateTime?
+  pmpkNumber      String?
+  aopVariant      String?
+  status          PupilStatus @default(ACTIVE)
+  pmpkNextAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  tags         PupilTag[]
+  notes        PupilNote[]
+  progress     PupilProgress[]
+  attachments  PupilAttachment[]
+  consents     Consent[]
+  eventLinks   EventPupil[]
+  waitlist     WaitlistEntry[]
+  documents    Document[]
+  generations  AiGeneration[]
+  contacts     PupilContact[]
+  imageSets    AiImageSet[]
+}
+
+model PupilContact {
+  id        String  @id @default(cuid())
+  pupilId   String
+  pupil     Pupil   @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  fullName  String
+  role      String  @default("Мама")
+  phone     String?
+  email     String?
+  isPrimary Boolean @default(false)
+  links     Json    @default("[]")
+}
+
+model Tag {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  category  TagCategory @default(CUSTOM)
+  color     String      @default("#6b7280")
+  createdAt DateTime    @default(now())
+  pupils    PupilTag[]
+
+  @@unique([userId, name])
+}
+
+model PupilTag {
+  pupilId String
+  tagId   String
+  pupil   Pupil @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  tag     Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([pupilId, tagId])
+}
+
+model PupilNote {
+  id        String   @id @default(cuid())
+  pupilId   String
+  pupil     Pupil    @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model PupilProgress {
+  id          String   @id @default(cuid())
+  pupilId     String
+  pupil       Pupil    @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  area        String
+  score       Int
+  recordedAt  DateTime @default(now())
+  note        String?
+}
+
+model PupilAttachment {
+  id             String          @id @default(cuid())
+  pupilId        String
+  pupil          Pupil           @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  filePath       String
+  fileName       String
+  fileType       FileKind
+  mimeType       String
+  sizeBytes      Int
+  linkedEventId  String?
+  linkedEvent    ScheduleEvent?  @relation(fields: [linkedEventId], references: [id], onDelete: SetNull)
+  textEnc        String?
+  analysisStatus AnalysisStatus  @default(NONE)
+  analysisError  String?
+  analysisId     String?
+  encrypted      Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+}
+
+model PmpkDraft {
+  id             String         @id @default(cuid())
+  userId         String
+  filePath       String
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  encrypted      Boolean        @default(true)
+  analysisStatus AnalysisStatus @default(QUEUED)
+  analysisError  String?
+  resultJson     Json?
+  createdAt      DateTime       @default(now())
+
+  @@index([userId])
+}
+
+model Consent {
+  id         String   @id @default(cuid())
+  pupilId    String
+  pupil      Pupil    @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  given      Boolean  @default(false)
+  givenAt    DateTime?
+  filePath   String?
+  signedBy   String?
+  note       String?
+  createdAt  DateTime @default(now())
+}
+
+model ScheduleEvent {
+  id             String      @id @default(cuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String
+  startAt        DateTime
+  endAt          DateTime
+  rrule          String?
+  type           EventType   @default(INDIVIDUAL)
+  status         EventStatus @default(SCHEDULED)
+  notes          String?
+  skipHolidays   Boolean     @default(true)
+  bufferMinutes  Int         @default(10)
+  seriesId       String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  pupils       EventPupil[]
+  exceptions   EventException[]
+  attachments  PupilAttachment[]
+}
+
+model EventPupil {
+  eventId    String
+  pupilId    String
+  event      ScheduleEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  pupil      Pupil         @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  attendance EventStatus?
+  reason     String?
+
+  @@id([eventId, pupilId])
+}
+
+model EventException {
+  id            String           @id @default(cuid())
+  eventId       String
+  event         ScheduleEvent    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  originalStart DateTime
+  action        ExceptionAction
+  newStart      DateTime?
+  newEnd        DateTime?
+  status        EventStatus?
+  notes         String?
+}
+
+model WaitlistEntry {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pupilId        String
+  pupil          Pupil    @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  preferredStart DateTime?
+  notes          String?
+  createdAt      DateTime @default(now())
+}
+
+model WorkingHours {
+  id            String @id @default(cuid())
+  userId        String
+  user          User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekday       Int
+  startMin      Int
+  endMin        Int
+  breakStartMin Int?
+  breakEndMin   Int?
+  bufferMinutes Int    @default(10)
+
+  @@unique([userId, weekday])
+}
+
+model Vacation {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startDate      DateTime
+  endDate        DateTime
+  autoReschedule Boolean  @default(true)
+  reason         String?
+  createdAt      DateTime @default(now())
+}
+
+model Folder {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[] @relation("FolderTree")
+  name      String
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  documents Document[]
+}
+
+model Document {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folderId    String?
+  folder      Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  pupilId     String?
+  pupil       Pupil?    @relation(fields: [pupilId], references: [id], onDelete: SetNull)
+  filePath    String
+  fileName    String
+  fileType    String
+  mimeType    String
+  sizeBytes   Int
+  tags        String[]
+  version     Int       @default(1)
+  contentText String?
+  autoTag     String?
+  deletedAt   DateTime?
+  encrypted   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  versions    DocumentVersion[]
+}
+
+model DocumentVersion {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  filePath   String
+  version    Int
+  createdAt  DateTime @default(now())
+}
+
+model AiAnalysis {
+  id         String         @id @default(cuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceType AnalysisSource
+  sourceId   String?
+  modelUsed  String
+  resultJson Json
+  createdAt  DateTime       @default(now())
+}
+
+model AiUsage {
+  id               String @id @default(cuid())
+  userId           String
+  user             User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period           String
+  tokensUsed       Int    @default(0)
+  audioMinutesUsed Float  @default(0)
+  analysesCount    Int    @default(0)
+  generationsCount Int    @default(0)
+  imagesCount      Int    @default(0)
+
+  @@unique([userId, period])
+}
+
+model AiGeneration {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pupilId   String?
+  pupil     Pupil?         @relation(fields: [pupilId], references: [id], onDelete: SetNull)
+  kind      GenerationKind
+  title     String
+  content   String
+  modelUsed String
+  documentId String?
+  createdAt DateTime       @default(now())
+}
+
+model SpeechMaterial {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  sound     String?
+  ageFrom   Int?
+  ageTo     Int?
+  kind      String   @default("text")
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model SavedFilter {
+  id        String @id @default(cuid())
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  payload   Json
+  createdAt DateTime @default(now())
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  message   String
+  page      String?
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model PushSubscription {
+  id        String @id @default(cuid())
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}
+
+model PictureWord {
+  id            String          @id @default(cuid())
+  userId        String?
+  user          User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word          String
+  sound         String
+  position      PicturePosition
+  syllables     Int             @default(1)
+  ageFrom       Int             @default(5)
+  promptEn      String
+  descriptionRu String
+  sounds        String[]
+  verified      Boolean         @default(false)
+  hidden        Boolean         @default(false)
+  isSystem      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+
+  @@index([sound, position])
+}
+
+model AiImageSet {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pupilId   String?
+  pupil     Pupil?         @relation(fields: [pupilId], references: [id], onDelete: SetNull)
+  kind      ImageSetKind
+  params    Json
+  status    ImageJobStatus @default(QUEUED)
+  seed      Int
+  createdAt DateTime       @default(now())
+  images    AiImage[]
+}
+
+model AiImage {
+  id        String         @id @default(cuid())
+  setId     String
+  set       AiImageSet     @relation(fields: [setId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word      String?
+  promptEn  String
+  filePath  String?
+  modelUsed String?
+  status    ImageJobStatus @default(QUEUED)
+  error     String?
+  createdAt DateTime       @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+}

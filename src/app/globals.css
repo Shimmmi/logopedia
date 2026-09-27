@@ -2,26 +2,295 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: 40 20% 98%;
+    --foreground: 220 16% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 16% 14%;
+    --primary: 172 66% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 12% 94%;
+    --secondary-foreground: 220 16% 18%;
+    --muted: 40 10% 94%;
+    --muted-foreground: 220 8% 32%;
+    --accent: 172 36% 93%;
+    --accent-foreground: 172 66% 22%;
+    --destructive: 0 72% 46%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 55% 32%;
+    --warning: 38 92% 40%;
+    --info: 210 70% 40%;
+    --border: 40 10% 86%;
+    --input: 40 10% 86%;
+    --ring: 172 66% 32%;
+    --radius: 0.75rem;
+    --sidebar: 220 16% 12%;
+    --sidebar-fg: 40 20% 96%;
+    --sidebar-muted: 220 8% 78%;
+    --event-diagnostics: 262 70% 48%;
+    --event-individual: 172 66% 32%;
+    --event-group: 221 70% 48%;
+    --event-consultation: 32 90% 42%;
+    --tag-diagnosis: 0 72% 46%;
+    --tag-direction: 221 70% 48%;
+    --tag-organizational: 38 92% 40%;
+    --tag-custom: 220 8% 40%;
+    --chart-1: 172 66% 32%;
+    --chart-2: 221 70% 48%;
+    --chart-3: 32 90% 42%;
+    --chart-4: 262 70% 48%;
+    --chart-5: 0 72% 46%;
+    --fc-page-bg-color: hsl(40 20% 98%);
+    --fc-neutral-bg-color: hsl(0 0% 100%);
+    --fc-border-color: hsl(40 10% 86%);
+    --fc-button-bg-color: hsl(172 66% 32%);
+    --fc-button-border-color: hsl(172 66% 32%);
+    --fc-today-bg-color: hsl(172 36% 93%);
+  }
+
+  .dark {
+    --background: 220 16% 8%;
+    --foreground: 40 12% 96%;
+    --card: 220 14% 11%;
+    --card-foreground: 40 12% 96%;
+    --primary: 172 50% 52%;
+    --primary-foreground: 220 16% 8%;
+    --secondary: 220 12% 16%;
+    --secondary-foreground: 40 12% 96%;
+    --muted: 220 12% 16%;
+    --muted-foreground: 40 8% 78%;
+    --accent: 172 20% 18%;
+    --accent-foreground: 172 50% 80%;
+    --destructive: 0 62% 52%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 45% 52%;
+    --warning: 38 80% 58%;
+    --info: 210 70% 64%;
+    --border: 220 10% 22%;
+    --input: 220 10% 22%;
+    --ring: 172 50% 52%;
+    --sidebar: 220 16% 7%;
+    --sidebar-fg: 40 12% 96%;
+    --sidebar-muted: 220 8% 72%;
+    --event-diagnostics: 262 60% 68%;
+    --event-individual: 172 50% 52%;
+    --event-group: 221 60% 68%;
+    --event-consultation: 32 80% 58%;
+    --tag-diagnosis: 0 62% 58%;
+    --tag-direction: 221 60% 68%;
+    --tag-organizational: 38 80% 58%;
+    --tag-custom: 220 8% 68%;
+    --chart-1: 172 50% 52%;
+    --chart-2: 221 60% 68%;
+    --chart-3: 32 80% 58%;
+    --chart-4: 262 60% 68%;
+    --chart-5: 0 62% 58%;
+    --fc-page-bg-color: hsl(220 16% 8%);
+    --fc-neutral-bg-color: hsl(220 14% 11%);
+    --fc-border-color: hsl(220 10% 22%);
+    --fc-button-bg-color: hsl(172 50% 52%);
+    --fc-button-border-color: hsl(172 50% 52%);
+    --fc-today-bg-color: hsl(172 20% 18%);
+    --fc-neutral-text-color: hsl(40 12% 96%);
+  }
+
+  .contrast {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 0%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 0%;
+    --primary: 0 0% 0%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 92%;
+    --secondary-foreground: 0 0% 0%;
+    --muted: 0 0% 92%;
+    --muted-foreground: 0 0% 15%;
+    --accent: 0 0% 90%;
+    --accent-foreground: 0 0% 0%;
+    --border: 0 0% 0%;
+    --input: 0 0% 0%;
+    --ring: 0 0% 0%;
+    --sidebar: 0 0% 0%;
+    --sidebar-fg: 0 0% 100%;
+    --sidebar-muted: 0 0% 85%;
+    --event-diagnostics: 262 80% 28%;
+    --event-individual: 172 80% 18%;
+    --event-group: 221 80% 26%;
+    --event-consultation: 32 100% 26%;
+    --tag-diagnosis: 0 80% 30%;
+    --tag-direction: 221 80% 28%;
+    --tag-organizational: 38 100% 24%;
+    --tag-custom: 0 0% 20%;
+    --fc-page-bg-color: #ffffff;
+    --fc-neutral-bg-color: #ffffff;
+    --fc-border-color: #000000;
+    --fc-button-bg-color: #000000;
+    --fc-button-border-color: #000000;
+    --fc-today-bg-color: #eeeeee;
+    --fc-neutral-text-color: #000000;
+  }
+
+  .a11y-lg {
+    font-size: 112.5%;
+  }
+
+  .reduce-motion *,
+  .reduce-motion *::before,
+  .reduce-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    font-size: 100%;
+  }
+  html,
+  body {
+    @apply bg-background text-foreground antialiased;
+    line-height: 1.5;
+  }
+  body {
+    font-size: 1rem;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+  .contrast :focus-visible {
+    outline: 3px solid #000;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  .measure {
+    max-width: 72ch;
+  }
+  .content-wrap {
+    @apply mx-auto w-full max-w-[1280px];
+  }
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+@media print {
+  nav,
+  aside,
+  header,
+  .no-print,
+  [data-feedback] {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt;
+  }
+  main,
+  article {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .print-break {
+    break-before: page;
+  }
+}
+
+/* FullCalendar: компактная сетка и тач-цели на телефоне */
+.fc-shell .fc {
+  font-size: 0.875rem;
+}
+.fc-shell .fc .fc-timegrid-slot {
+  height: 2.75rem;
+}
+.fc-shell .fc .fc-timegrid-slot-label-cushion,
+.fc-shell .fc .fc-col-header-cell-cushion {
+  padding: 0.25rem 0.375rem;
+  font-weight: 500;
+}
+.fc-shell .fc .fc-col-header-cell-cushion {
+  text-transform: capitalize;
+}
+.fc-shell .fc .fc-timegrid-event .fc-event-main {
+  padding: 0.125rem 0.375rem;
+}
+.fc-shell .fc .fc-event-title {
+  font-weight: 500;
+}
+.fc-shell .fc .fc-non-business {
+  background: hsl(var(--muted) / 0.6);
+}
+.fc-shell .fc .fc-list-event-title a {
+  color: inherit;
+}
+.fc-shell .fc .fc-list-day-cushion {
+  text-transform: capitalize;
+}
+@media (max-width: 767px) {
+  .fc-shell .fc {
+    font-size: 0.8125rem;
+  }
+  .fc-shell .fc .fc-timegrid-slot {
+    height: 3rem;
+  }
+  .fc-shell .fc .fc-timegrid-axis-cushion,
+  .fc-shell .fc .fc-timegrid-slot-label-cushion {
+    padding-inline: 0.25rem;
+  }
+  .fc-shell .fc .fc-daygrid-day-number,
+  .fc-shell .fc .fc-daygrid-day-top {
+    font-size: 0.75rem;
+  }
+  .fc-shell .fc .fc-daygrid-event {
+    font-size: 0.6875rem;
+  }
+  .fc-shell .fc .fc-list-event-time {
+    white-space: nowrap;
+  }
+}
+.fc-shell .fc .fc-event-canceled {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.fc-shell .fc .fc-event-completed {
+  opacity: 0.8;
+}
+.contrast .fc-shell .fc .fc-event-diagnostics {
+  outline: 2px dashed #000;
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 3px solid CanvasText;
+    outline-offset: 2px;
   }
 }

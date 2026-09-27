@@ -1,0 +1,17 @@
+[Unit]
+Description=LogoPed BullMQ worker
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/Logoped
+EnvironmentFile=/opt/Logoped/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npx tsx worker/index.ts
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

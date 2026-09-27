@@ -1,0 +1,18 @@
+[Unit]
+Description=LogoPed Next.js app
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/Logoped
+EnvironmentFile=/opt/Logoped/.env
+Environment=NODE_ENV=production
+Environment=PORT=8030
+ExecStart=/usr/bin/npx next start -H 127.0.0.1 -p 8030
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
