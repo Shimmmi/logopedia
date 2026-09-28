@@ -133,6 +133,14 @@ export default function SchedulePage() {
   const [title, setTitle] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [weekStart, setWeekStart] = useState("");
+  const [proposalOpen, setProposalOpen] = useState(false);
+  const [until, setUntil] = useState("");
+  const [proposal, setProposal] = useState<{
+    placed: { pupilIds: string[]; names: string[]; weekday: number; ymd: string; start: string; end: string; startMin: number; endMin: number; pulled: string[]; format: string }[];
+    missed: { pupilId: string; name: string; reason: string }[];
+    solo: string[];
+  } | null>(null);
 
   useEffect(() => {
     if (window.innerWidth < 768) setView("timeGridDay");
@@ -373,6 +381,24 @@ export default function SchedulePage() {
             </button>
             <button
               type="button"
+              className="flex h-11 items-center justify-center border-l border-border px-3 text-small hover:bg-accent"
+              onClick={async () => {
+                try {
+                  const d = await api<NonNullable<typeof proposal>>("/api/schedule/propose", {
+                    method: "POST",
+                    body: JSON.stringify({ weekStart: weekStart || new Date().toISOString(), tz }),
+                  });
+                  setProposal(d);
+                  setProposalOpen(true);
+                } catch (e) {
+                  toast.error((e as Error).message);
+                }
+              }}
+            >
+              Составить неделю
+            </button>
+            <button
+              type="button"
               className="flex h-11 w-11 items-center justify-center rounded-r-md border-l border-border hover:bg-accent"
               aria-label="Вперёд"
               onClick={() => cal()?.next()}
@@ -476,7 +502,10 @@ export default function SchedulePage() {
           eventLongPressDelay={300}
           selectable={!isMobile}
           editable
-          datesSet={(arg) => setTitle(arg.view.title)}
+          datesSet={(arg) => {
+            setTitle(arg.view.title);
+            setWeekStart(arg.start.toISOString());
+          }}
           events={async (info, success, failure) => {
             try {
               setLoadError(null);
@@ -581,6 +610,71 @@ export default function SchedulePage() {
         event={editEvent}
         onSaved={() => cal()?.refetchEvents()}
       />
+
+      <Dialog open={proposalOpen} onOpenChange={setProposalOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Черновик недели</DialogTitle>
+            <DialogDescription>Существующие занятия не двигаются. Кто не встал, остаётся в списке.</DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-2 text-small">
+            {proposal?.placed.map((p, i) => (
+              <li key={i} className="rounded-md border border-border p-2">
+                <div>{p.names.join(", ")} · {p.ymd} {p.start}–{p.end} · {p.format === "GROUP" ? "группа" : "индивидуально"}</div>
+                {!!p.pulled.length && <div className="text-caption text-muted-foreground">Снимут с урока: {p.pulled.join("; ")}</div>}
+              </li>
+            ))}
+            {!proposal?.placed.length && <li className="text-muted-foreground">На эту неделю свободных слотов не нашлось.</li>}
+          </ul>
+          {!!proposal?.solo.length && (
+            <p className="text-caption text-muted-foreground">На эту неделю индивидуально, группа не собралась: {proposal.solo.join(", ")}</p>
+          )}
+          {!!proposal?.missed.length && (
+            <ul className="space-y-2">
+              {proposal.missed.map((m) => (
+                <li key={m.pupilId} className="flex items-center justify-between gap-2 text-small">
+                  <span>{m.name}: {m.reason}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditEvent(null);
+                      setDefaults({ pupilIds: [m.pupilId], title: m.name });
+                      setProposalOpen(false);
+                      setOpen(true);
+                    }}
+                  >
+                    Поставить вручную
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <label className="block text-small">
+            Повторять до даты
+            <input className="mt-1 h-11 w-full rounded-md border border-border bg-background px-3" type="date" value={until} onChange={(e) => setUntil(e.target.value)} />
+          </label>
+          <Button
+            disabled={!proposal?.placed.length}
+            onClick={async () => {
+              try {
+                const res = await api<{ created: string[]; failed: { name: string; reason: string }[] }>("/api/schedule/propose", {
+                  method: "POST",
+                  body: JSON.stringify({ accept: true, placed: proposal?.placed, until: until || undefined, tz, weekStart }),
+                });
+                if (res.failed.length) toast.error(res.failed.map((f) => `${f.name}: ${f.reason}`).join("; "));
+                else toast.success("Неделя поставлена");
+                setProposalOpen(false);
+                cal()?.refetchEvents();
+              } catch (e) {
+                toast.error((e as Error).message);
+              }
+            }}
+          >
+            Принять
+          </Button>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!viewEvent} onOpenChange={() => setViewEvent(null)}>
         <DialogContent>

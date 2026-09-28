@@ -44,11 +44,11 @@ export async function interpretPmpkFile(userId: string, buf: Buffer, mime: strin
     where: { userId, category: { in: ["DIAGNOSIS", "DIRECTION"] } },
     select: { id: true, name: true, category: true },
   });
-  const { content, tokens: t2, model } = await chatJsonStrict(userId, SYSTEM_LOGOPED, promptPmpk(text, tags));
+  const { content, tokens: t2, model, cost } = await chatJsonStrict(userId, SYSTEM_LOGOPED, promptPmpk(text, tags));
   tokens += t2;
   const parsed = tryJson(content) as Record<string, unknown>;
   parsed.anonymizedPreview = text.replace(/\s+/g, " ").trim().slice(0, 300);
-  await bumpUsage(userId, { tokens, analyses: 1 });
+  await bumpUsage(userId, { tokens, analyses: 1, costRub: typeof cost === "number" ? cost : 10 });
   return { parsed, model, text };
 }
 

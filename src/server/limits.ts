@@ -9,6 +9,7 @@ const UNLIMITED = {
   audioMinutes: Infinity,
   generationsPerMonth: Infinity,
   imagesPerMonth: Infinity,
+  rubCeiling: Number.MAX_SAFE_INTEGER,
   advancedModel: true,
   sms: true,
   unlimited: true,
@@ -17,28 +18,31 @@ const UNLIMITED = {
 export const PLAN_LIMITS = {
   FREE: {
     storageBytes: 500 * 1024 * 1024,
-    analysesPerMonth: 5,
+    analysesPerMonth: 1,
     audioMinutes: 3,
-    generationsPerMonth: 10,
-    imagesPerMonth: 10,
+    generationsPerMonth: 1,
+    imagesPerMonth: 2,
+    rubCeiling: 40,
     advancedModel: false,
     sms: false,
   },
   PRO: {
     storageBytes: 5 * 1024 * 1024 * 1024,
-    analysesPerMonth: 20,
+    analysesPerMonth: 10,
     audioMinutes: 15,
-    generationsPerMonth: 80,
-    imagesPerMonth: 60,
+    generationsPerMonth: 20,
+    imagesPerMonth: 20,
+    rubCeiling: 500,
     advancedModel: false,
     sms: false,
   },
   PREMIUM: {
     storageBytes: 25 * 1024 * 1024 * 1024,
-    analysesPerMonth: Infinity,
-    audioMinutes: Infinity,
-    generationsPerMonth: Infinity,
-    imagesPerMonth: Infinity,
+    analysesPerMonth: 20,
+    audioMinutes: 60,
+    generationsPerMonth: 70,
+    imagesPerMonth: 40,
+    rubCeiling: 1600,
     advancedModel: true,
     sms: true,
   },
@@ -87,12 +91,21 @@ export async function getUsage(userId: string) {
   });
 }
 
+async function assertRub(userId: string, extra: number) {
+  const limits = await getLimits(userId);
+  const usage = await getUsage(userId);
+  if (usage.costRub + extra > limits.rubCeiling) {
+    throw new LimitError("Исчерпан месячный потолок расходов на ИИ.");
+  }
+}
+
 export async function assertGeneration(userId: string) {
   const limits = await getLimits(userId);
   const usage = await getUsage(userId);
   if (usage.generationsCount >= limits.generationsPerMonth) {
-    throw new LimitError("Исчерпан лимит ИИ-генераций в этом месяце.");
+    throw new LimitError("Исчерпан лимит текстовых черновиков в этом месяце.");
   }
+  await assertRub(userId, 12);
 }
 
 export async function assertAnalysis(userId: string, audioMin = 0) {
@@ -104,6 +117,7 @@ export async function assertAnalysis(userId: string, audioMin = 0) {
   if (audioMin && usage.audioMinutesUsed + audioMin > limits.audioMinutes) {
     throw new LimitError("Исчерпан лимит минут транскрибации.");
   }
+  await assertRub(userId, 10);
 }
 
 export async function remainingImages(userId: string) {
@@ -121,6 +135,7 @@ export async function assertImages(userId: string, n = 1) {
         : "Исчерпан лимит листов."
     );
   }
+  await assertRub(userId, 8 * n);
 }
 
 export class LimitError extends Error {
@@ -133,7 +148,7 @@ export class LimitError extends Error {
 
 export async function bumpUsage(
   userId: string,
-  patch: { tokens?: number; audioMin?: number; analyses?: number; generations?: number; images?: number }
+  patch: { tokens?: number; audioMin?: number; analyses?: number; generations?: number; images?: number; costRub?: number }
 ) {
   const period = periodKey();
   await prisma.aiUsage.upsert({
@@ -146,6 +161,7 @@ export async function bumpUsage(
       analysesCount: patch.analyses ?? 0,
       generationsCount: patch.generations ?? 0,
       imagesCount: patch.images ?? 0,
+      costRub: patch.costRub ?? 0,
     },
     update: {
       tokensUsed: { increment: patch.tokens ?? 0 },
@@ -153,6 +169,7 @@ export async function bumpUsage(
       analysesCount: { increment: patch.analyses ?? 0 },
       generationsCount: { increment: patch.generations ?? 0 },
       imagesCount: { increment: patch.images ?? 0 },
+      costRub: { increment: patch.costRub ?? 0 },
     },
   });
 }

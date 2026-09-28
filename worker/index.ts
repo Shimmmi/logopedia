@@ -12,6 +12,7 @@ import { bumpUsage, assertAnalysis } from "../src/server/limits";
 import { storage } from "../src/server/storage";
 import { extractText } from "../src/server/extract";
 import { analyzePmpk, analyzePmpkDraft } from "../src/server/pmpk-analyze";
+import { analyzeSchoolFile } from "../src/server/school";
 import { generateImageSet } from "../src/server/images";
 import { ocrAvailable } from "../src/server/ocr";
 
@@ -40,7 +41,7 @@ new Worker(
         text = await extractText(buf, doc.mimeType, doc.fileName);
         await prisma.document.update({ where: { id: doc.id }, data: { contentText: text } });
       }
-      const { content, tokens, model } = await chatText(userId, SYSTEM_LOGOPED, promptDocAnalysis(text));
+      const { content, tokens, model, cost } = await chatText(userId, SYSTEM_LOGOPED, promptDocAnalysis(text));
       const analysis = await prisma.aiAnalysis.create({
         data: {
           userId,
@@ -50,7 +51,7 @@ new Worker(
           resultJson: tryJson(content),
         },
       });
-      await bumpUsage(userId, { tokens, analyses: 1 });
+      await bumpUsage(userId, { tokens, analyses: 1, costRub: typeof cost === "number" ? cost : 10 });
       await notifyUser(userId, "Анализ документа готов", doc.fileName, `/documents?id=${doc.id}`);
       return analysis.id;
     }
@@ -61,6 +62,10 @@ new Worker(
     if (job.name === "analyze-pmpk-draft") {
       const { draftId } = job.data as { draftId: string };
       return analyzePmpkDraft(userId, draftId);
+    }
+    if (job.name === "analyze-school") {
+      const { attachmentId, pupilId } = job.data as { attachmentId: string; pupilId: string };
+      return analyzeSchoolFile(userId, pupilId, attachmentId);
     }
     if (job.name === "generate-image-set") {
       const { setId } = job.data as { setId: string };
@@ -89,7 +94,12 @@ new Worker(
           resultJson: { transcript, summary: summary.content, pronunciation },
         },
       });
-      await bumpUsage(userId, { tokens: summary.tokens, analyses: 1, audioMin: minutes });
+      await bumpUsage(userId, {
+        tokens: summary.tokens,
+        analyses: 1,
+        audioMin: minutes,
+        costRub: typeof summary.cost === "number" ? summary.cost : 10,
+      });
       await notifyUser(userId, "Анализ аудио готов", att.fileName, `/pupils/${att.pupilId}`);
     }
   },

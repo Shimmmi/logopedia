@@ -7,6 +7,11 @@ import { serializePupil, syncContacts } from "@/server/pupils";
 import { audit } from "@/server/audit";
 import { expandEvent } from "@/server/schedule";
 
+function lessonMinutesForGrade(grade: unknown) {
+  const n = Number(String(grade || "").replace(/\D/g, ""));
+  return n >= 1 && n <= 4 ? 30 : 40;
+}
+
 export const GET = withAuth(async (req, user) => {
   const q = req.nextUrl.searchParams;
   const search = q.get("q")?.trim() || "";
@@ -71,6 +76,7 @@ export const POST = withAuth(async (req, user) => {
       gender: body.gender || null,
       school: body.school || null,
       grade: body.grade || null,
+      lessonMinutes: lessonMinutesForGrade(body.grade),
       enrolledAt: body.enrolledAt ? new Date(body.enrolledAt) : undefined,
       diagnosisEnc: body.diagnosis ? encrypt(body.diagnosis) : null,
       pmpkDate: body.pmpkDate ? new Date(body.pmpkDate) : null,

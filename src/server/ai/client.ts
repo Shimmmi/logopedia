@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { env } from "../env";
-import { getLimits } from "../limits";
+import { resolveModel } from "../models";
 
 export function aiClient() {
   if (!env.aiApiKey) {
@@ -10,8 +10,7 @@ export function aiClient() {
 }
 
 export async function modelFor(userId: string) {
-  const { advancedModel } = await getLimits(userId);
-  return advancedModel ? env.aiModelAdvanced : env.aiModelBasic;
+  return resolveModel(userId, "TEXT");
 }
 
 export async function chatJson(userId: string, system: string, user: string) {
@@ -27,7 +26,7 @@ export async function chatJson(userId: string, system: string, user: string) {
   });
   const content = res.choices[0]?.message?.content ?? "";
   const tokens = res.usage?.total_tokens ?? 0;
-  return { content, tokens, model };
+  return { content, tokens, model, cost: costOf(res.usage) };
 }
 
 export async function chatText(userId: string, system: string, user: string) {
@@ -48,7 +47,12 @@ export async function chatJsonStrict(userId: string, system: string, user: strin
   });
   const content = res.choices[0]?.message?.content ?? "{}";
   const tokens = res.usage?.total_tokens ?? 0;
-  return { content, tokens, model };
+  return { content, tokens, model, cost: costOf(res.usage) };
+}
+
+function costOf(usage: unknown) {
+  const row = usage as { cost?: number } | null | undefined;
+  return typeof row?.cost === "number" ? row.cost : null;
 }
 
 function bufferFromB64(raw: string) {
@@ -87,14 +91,65 @@ function refused(status: number, text: string) {
   return status === 400 || /safety|content|refus/i.test(text);
 }
 
+function namedParam(message: string) {
+  const m = message.match(/[`'"]([a-zA-Z_][a-zA-Z0-9_]*)[`'"]/);
+  return m?.[1] || null;
+}
+
+async function generateSunburst(model: string, prompt: string, aspectRatio: string) {
+  const headers = {
+    Authorization: `Bearer ${env.aiApiKey}`,
+    "Content-Type": "application/json",
+  };
+  const base = env.aiBaseUrl.replace(/\/$/, "");
+  const body: Record<string, unknown> = {
+    model,
+    prompt,
+    n: 1,
+    aspect_ratio: aspectRatio,
+    quality: "medium",
+    output_format: "png",
+  };
+  let last = "Не удалось сгенерировать изображение";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const rest = await fetch(`${base}/images`, { method: "POST", headers, body: JSON.stringify(body) });
+    const payload = (await rest.json().catch(() => ({}))) as {
+      error?: { message?: string } | string;
+      usage?: { cost?: number };
+    };
+    const err = payload.error;
+    if (!rest.ok || err) {
+      const text = typeof err === "string" ? err : err?.message || rest.statusText;
+      last = text || last;
+      if (refused(rest.status, text)) {
+        throw Object.assign(new Error("Модель отказалась рисовать этот объект. Замените слово."), { status: 400 });
+      }
+      const extra = namedParam(text);
+      if (extra && extra in body && extra !== "model" && extra !== "prompt" && extra !== "n") {
+        delete body[extra];
+        continue;
+      }
+      throw Object.assign(new Error(last), { status: 502 });
+    }
+    const buf = extractImageBuffer(payload);
+    if (!buf?.length) throw new Error("Модель не вернула изображение");
+    return { buffer: buf, model, cost: typeof payload.usage?.cost === "number" ? payload.usage.cost : null };
+  }
+  throw Object.assign(new Error(last), { status: 502 });
+}
+
 export async function generateImage(
   prompt: string,
-  opts?: { seed?: number; aspectRatio?: string; size?: string }
+  opts?: { seed?: number; aspectRatio?: string; size?: string; userId?: string }
 ) {
   if (!env.aiApiKey) {
     throw Object.assign(new Error("Генерация изображений не настроена"), { status: 503 });
   }
   const aspectRatio = opts?.aspectRatio || "3:4";
+  const model = opts?.userId ? await resolveModel(opts.userId, "IMAGE") : env.aiImageModel;
+  if (model.startsWith("openai/gpt-image")) {
+    return generateSunburst(model, prompt, aspectRatio);
+  }
   const size = opts?.size || "1K";
   const headers = {
     Authorization: `Bearer ${env.aiApiKey}`,
@@ -106,7 +161,7 @@ export async function generateImage(
     method: "POST",
     headers,
     body: JSON.stringify({
-      model: env.aiImageModel,
+      model,
       prompt,
       n: 1,
       aspect_ratio: aspectRatio,
@@ -118,7 +173,8 @@ export async function generateImage(
   const restErr = (restPayload as { error?: { message?: string } | string }).error;
   if (rest.ok && !restErr) {
     const buf = extractImageBuffer(restPayload);
-    if (buf?.length) return { buffer: buf, model: env.aiImageModel };
+    const cost = costOf((restPayload as { usage?: unknown }).usage);
+    if (buf?.length) return { buffer: buf, model, cost };
   } else {
     const text = typeof restErr === "string" ? restErr : restErr?.message || "";
     if (refused(rest.status, text)) {
@@ -130,7 +186,7 @@ export async function generateImage(
     method: "POST",
     headers,
     body: JSON.stringify({
-      model: env.aiImageModel,
+      model,
       messages: [{ role: "user", content: prompt }],
       modalities: ["image", "text"],
       image_config: { aspect_ratio: aspectRatio, image_size: size },
@@ -147,7 +203,7 @@ export async function generateImage(
   }
   const buf = extractImageBuffer(chatPayload);
   if (!buf?.length) throw new Error("Модель не вернула изображение");
-  return { buffer: buf, model: env.aiImageModel };
+  return { buffer: buf, model, cost: costOf((chatPayload as { usage?: unknown }).usage) };
 }
 
 let imageModelOk: boolean | null = null;
@@ -184,26 +240,42 @@ export async function chatStream(
   if (!env.aiApiKey) {
     const stub = "Черновик недоступен: не задан ключ генерации. Добавьте AI_API_KEY.";
     onDelta(stub);
-    return { content: stub, tokens: 0, model: "stub" };
+    return { content: stub, tokens: 0, model: "stub", cost: null as number | null };
   }
   const client = aiClient();
   const model = await modelFor(userId);
-  const stream = await client.chat.completions.create({
-    model,
-    temperature: 0.4,
-    stream: true,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-  });
+  const messages = [
+    { role: "system" as const, content: system },
+    { role: "user" as const, content: user },
+  ];
+  const stream = await client.chat.completions
+    .create({
+      model,
+      temperature: 0.4,
+      stream: true,
+      stream_options: { include_usage: true },
+      messages,
+    })
+    .catch(() =>
+      client.chat.completions.create({
+        model,
+        temperature: 0.4,
+        stream: true,
+        messages,
+      }),
+    );
   let content = "";
+  let tokens = 0;
+  let cost: number | null = null;
   for await (const chunk of stream) {
     const delta = chunk.choices[0]?.delta?.content || "";
     if (delta) {
       content += delta;
       onDelta(delta);
     }
+    const usage = (chunk as { usage?: { total_tokens?: number; cost?: number } }).usage;
+    if (usage?.total_tokens) tokens = usage.total_tokens;
+    if (typeof usage?.cost === "number") cost = usage.cost;
   }
-  return { content, tokens: 0, model };
+  return { content, tokens, model, cost };
 }

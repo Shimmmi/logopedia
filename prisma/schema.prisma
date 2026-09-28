@@ -72,6 +72,28 @@ enum FileKind {
   IMAGE
   OTHER
   PMPK
+  SCHOOL
+}
+
+enum WeekParity {
+  BOTH
+  NUMERATOR
+  DENOMINATOR
+}
+
+enum LessonFormat {
+  INDIVIDUAL
+  GROUP
+}
+
+enum SchoolRowStatus {
+  DRAFT
+  ACCEPTED
+}
+
+enum ModelKind {
+  TEXT
+  IMAGE
 }
 
 enum AnalysisStatus {
@@ -148,6 +170,9 @@ model User {
   a11yReduceMotion   Boolean   @default(false)
   aiPmpkConsentAt    DateTime?
   aiPmpkAutoAnalyze  Boolean   @default(true)
+  textModel          String?
+  imageModel         String?
+  protectedSubjects  String    @default("русский язык,математика,алгебра,геометрия")
   mustChangePassword Boolean   @default(false)
   onboardingDone     Boolean   @default(false)
   pdConsentAt        DateTime?
@@ -189,6 +214,7 @@ model User {
   imageSets        AiImageSet[]
   images           AiImage[]
   pictureWords     PictureWord[]
+  bells            BellTemplate[]
 }
 
 model AuthIdentity {
@@ -301,7 +327,15 @@ model Pupil {
   documents    Document[]
   generations  AiGeneration[]
   contacts     PupilContact[]
-  imageSets    AiImageSet[]
+  imageSets      AiImageSet[]
+  schoolLessons  SchoolLesson[]
+  bellTemplate   BellTemplate?   @relation(fields: [bellTemplateId], references: [id], onDelete: SetNull)
+  bellTemplateId String?
+  pullFromLessons Boolean        @default(true)
+  sessionsPerWeek Int            @default(2)
+  lessonFormat    LessonFormat   @default(INDIVIDUAL)
+  lessonMinutes   Int            @default(40)
+  shift           Int            @default(1)
 }
 
 model PupilContact {
@@ -557,8 +591,51 @@ model AiUsage {
   analysesCount    Int    @default(0)
   generationsCount Int    @default(0)
   imagesCount      Int    @default(0)
+  costRub          Float  @default(0)
 
   @@unique([userId, period])
+}
+
+model BellTemplate {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  shift     Int      @default(1)
+  lessons   Json
+  isDefault Boolean  @default(false)
+  pupils    Pupil[]
+  createdAt DateTime @default(now())
+
+  @@unique([userId, name, shift])
+}
+
+model SchoolLesson {
+  id        String          @id @default(cuid())
+  pupilId   String
+  pupil     Pupil           @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  weekday   Int
+  startMin  Int
+  endMin    Int
+  subject   String
+  parity    WeekParity      @default(BOTH)
+  status    SchoolRowStatus @default(DRAFT)
+  warned    Boolean         @default(false)
+  createdAt DateTime        @default(now())
+
+  @@index([pupilId, status])
+}
+
+model PlanModelAllow {
+  id          String    @id @default(cuid())
+  plan        Plan
+  modelId     String
+  kind        ModelKind
+  isDefault   Boolean   @default(false)
+  fallbackRub Float     @default(8)
+  createdAt   DateTime  @default(now())
+
+  @@unique([plan, modelId, kind])
 }
 
 model AiGeneration {

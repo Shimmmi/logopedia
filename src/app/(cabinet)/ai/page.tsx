@@ -32,8 +32,12 @@ function AiDocs() {
     fetch("/api/ai/generations").then((r) => r.json()).then((d) => setHistory(d.items || []));
     fetch("/api/ai/usage").then((r) => r.json()).then((d) => {
       const lim = d.limits;
-      if (!lim || lim.unlimited || !Number.isFinite(lim.generationsPerMonth)) setUsage({ remaining: "безлимит" });
-      else setUsage({ remaining: `${Math.max(0, lim.generationsPerMonth - (d.usage?.generationsCount || 0))} из ${lim.generationsPerMonth}` });
+      if (!lim || lim.unlimited || !Number.isFinite(lim.generationsPerMonth)) setUsage({ remaining: "лимиты сняты" });
+      else {
+        const left = Math.max(0, lim.generationsPerMonth - (d.usage?.generationsCount || 0));
+        const rub = Math.round((d.usage?.costRub || 0) * 100) / 100;
+        setUsage({ remaining: `${left} из ${lim.generationsPerMonth} текстов · ${rub} из ${lim.rubCeiling} ₽` });
+      }
     }).catch(() => undefined);
   }, []);
 

@@ -9,12 +9,36 @@ export class ScheduleError extends Error {
 }
 
 /** Локальные компоненты даты в часовом поясе пользователя (сервер работает в UTC). */
-function localParts(d: Date, tz: string) {
+export function localParts(d: Date, tz: string) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour12: false, weekday: "short", hour: "2-digit", minute: "2-digit" }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
   const hour = Number(get("hour")) % 24;
   return { weekday, minutes: hour * 60 + Number(get("minute")) };
+}
+
+/** Стена часов `minutes` в поясе `tz` на календарный день `ymd`. */
+export function zonedDateTime(ymd: string, minutes: number, tz: string) {
+  const [Y, M, D] = ymd.split("-").map(Number);
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  let utc = Date.UTC(Y, M - 1, D, hour, minute);
+  for (let i = 0; i < 3; i++) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).formatToParts(new Date(utc));
+    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+    const localAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour") % 24, get("minute"));
+    const target = Date.UTC(Y, M - 1, D, hour, minute);
+    utc += target - localAsUtc;
+  }
+  return new Date(utc);
 }
 
 function fmtMin(m: number) {

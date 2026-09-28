@@ -137,6 +137,7 @@ export const POST = withAuth(async (req, user) => {
         odd,
         age: body.age || "5–8",
         title,
+        extra: String(body.extra || "").slice(0, 500),
       },
       seed,
       status: "QUEUED",

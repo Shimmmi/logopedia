@@ -2,10 +2,17 @@ import { prisma } from "./db";
 import { generateImage } from "./ai/client";
 import { storage } from "./storage";
 import { bumpUsage } from "./limits";
-import { sheetPrompt, type SheetWord } from "@/lib/picture-prompt";
+import { imagePrompt, sheetPrompt, type SheetWord } from "@/lib/picture-prompt";
+import { buildLessonPdf } from "./pdf-sheet";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { tmpdir } from "os";
+import path from "path";
 import { notifyUser } from "./notify";
 
 const SHEET_TIMEOUT_MS = 180_000;
+const exec = promisify(execFile);
 
 function setWords(set: { params: unknown; images: { word: string | null; promptEn: string }[] }): SheetWord[] {
   const params = set.params as { words?: SheetWord[] };
@@ -29,6 +36,7 @@ async function toPng(buf: Buffer) {
 }
 
 async function renderSheet(set: {
+  userId?: string;
   kind: string;
   seed: number;
   params: unknown;
@@ -43,6 +51,7 @@ async function renderSheet(set: {
     title?: string;
     words?: SheetWord[];
     odd?: SheetWord | null;
+    extra?: string;
   };
   const style = params.style === "color" ? "color" : "outline";
   const words = setWords(set);
@@ -55,12 +64,88 @@ async function renderSheet(set: {
     age: params.age,
     words: words.length ? words : [{ word: "предмет", promptEn: "a simple everyday object" }],
     odd: params.odd || null,
+    extra: params.extra,
   });
+  if (set.kind === "SOUND_CARDS" || set.kind === "ODD_ONE") {
+    return renderLesson(
+      set.userId,
+      set.seed,
+      style,
+      params,
+      words.length ? words : [{ word: "предмет", promptEn: "a simple everyday object" }],
+      prompt,
+    );
+  }
   const result = await Promise.race([
-    generateImage(prompt, { seed: set.seed, aspectRatio: "3:4", size: "1K" }),
+    generateImage(prompt, { seed: set.seed, aspectRatio: "3:4", size: "1K", userId: set.userId }),
     new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), SHEET_TIMEOUT_MS)),
   ]);
-  return { buffer: await toPng(result.buffer), model: result.model, prompt };
+  return { buffer: await toPng(result.buffer), model: result.model, prompt, cost: result.cost };
+}
+
+async function pdfToPng(pdf: Buffer) {
+  const dir = await mkdtemp(path.join(tmpdir(), "lp-sheet-"));
+  try {
+    const src = path.join(dir, "in.pdf");
+    await writeFile(src, pdf);
+    await exec("pdftoppm", ["-png", "-r", "120", "-singlefile", src, path.join(dir, "out")]);
+    return await readFile(path.join(dir, "out.png"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+async function renderLesson(
+  userId: string | undefined,
+  seed: number,
+  style: "outline" | "color",
+  params: { sound?: string; title?: string; odd?: SheetWord | null; extra?: string },
+  words: SheetWord[],
+  prompt: string
+) {
+  const named = words.slice(0, 4);
+  const listen = (words.slice(4, 6).length ? words.slice(4, 6) : named.slice(0, 2)).slice(0, 2);
+  const odd = params.odd && params.sound ? params.odd : null;
+  const pictures: SheetWord[] = [];
+  for (const w of [...named, ...(odd ? [odd] : []), ...listen]) {
+    if (!pictures.some((p) => p.word === w.word)) pictures.push(w);
+  }
+  let cost = 0;
+  let model = "";
+  const drawn = new Map<string, Buffer>();
+  await Promise.all(
+    pictures.map(async (w, i) => {
+      const result = await generateImage(imagePrompt(w.promptEn, style, params.extra), {
+        seed: seed + i,
+        aspectRatio: "1:1",
+        size: "1K",
+        userId,
+      });
+      drawn.set(w.word, await toPng(result.buffer));
+      model = result.model;
+      if (result.cost) cost += result.cost;
+    })
+  );
+  const cell = (w: SheetWord) => ({ image: drawn.get(w.word), label: w.word });
+  const pdf = await buildLessonPdf({
+    title: params.title || "Картинки",
+    sound: params.sound,
+    nameRow: named.map(cell),
+    oddRow: odd ? [...named.slice(0, 3), odd].map((w) => ({ ...cell(w), odd: w.word === odd.word })) : undefined,
+    listenRow: listen.map(cell),
+    color: named[0]
+      ? {
+          image: await (async () => {
+            const sharp = (await import("sharp")).default;
+            const src = drawn.get(named[0].word);
+            if (!src) return undefined;
+            return sharp(src).grayscale().normalize().threshold(170).png().toBuffer();
+          })(),
+          label: named[0].word,
+        }
+      : undefined,
+  });
+  return { buffer: await pdfToPng(pdf), model, prompt, cost: cost || null };
 }
 
 export async function generateImageSet(userId: string, setId: string) {
@@ -74,7 +159,7 @@ export async function generateImageSet(userId: string, setId: string) {
   }
   await prisma.aiImage.update({ where: { id: target.id }, data: { status: "RUNNING", error: null } });
   try {
-    const result = await renderSheet(set);
+    const result = await renderSheet({ ...set, userId });
     const saved = await storage.saveEncrypted(userId, `${setId}-a4.png`, result.buffer, "images");
     await prisma.aiImage.update({
       where: { id: target.id },
@@ -87,7 +172,7 @@ export async function generateImageSet(userId: string, setId: string) {
         word: "Лист A4",
       },
     });
-    await bumpUsage(userId, { images: 1 });
+    await bumpUsage(userId, { images: 1, costRub: result.cost ?? 8 });
     await prisma.aiImageSet.update({ where: { id: setId }, data: { status: "DONE" } });
     await notifyUser(userId, "Лист готов", "Страница с заданиями в библиотеке", "/library");
   } catch (e) {
@@ -103,7 +188,7 @@ export async function regenerateOne(userId: string, imageId: string) {
   await prisma.aiImage.update({ where: { id: img.id }, data: { status: "RUNNING", error: null } });
   await prisma.aiImageSet.update({ where: { id: img.setId }, data: { status: "RUNNING" } });
   try {
-    const result = await renderSheet({ ...img.set, seed: Date.now() % 1_000_000 });
+    const result = await renderSheet({ ...img.set, userId, seed: Date.now() % 1_000_000 });
     const saved = await storage.saveEncrypted(userId, `${img.setId}-a4.png`, result.buffer, "images");
     await prisma.aiImage.update({
       where: { id: img.id },
@@ -116,7 +201,7 @@ export async function regenerateOne(userId: string, imageId: string) {
         word: "Лист A4",
       },
     });
-    await bumpUsage(userId, { images: 1 });
+    await bumpUsage(userId, { images: 1, costRub: result.cost ?? 8 });
     await prisma.aiImageSet.update({ where: { id: img.setId }, data: { status: "DONE" } });
   } catch (e) {
     const msg = (e as Error).message === "timeout" ? "Время ожидания истекло. Повторите." : (e as Error).message;

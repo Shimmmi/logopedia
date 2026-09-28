@@ -31,6 +31,7 @@ import { formatPhone, normalizePhone } from "@/lib/phone";
 import { parseLinks } from "@/lib/social";
 import { SocialLinksView } from "@/components/social-links";
 import { PmpkSuggestions } from "@/components/pmpk-suggestions";
+import { SchoolTab } from "@/components/school-tab";
 import { PmpkUpload, uploadWithProgress } from "@/components/pmpk-upload";
 import { EmptyState } from "@/components/empty-state";
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -182,6 +183,7 @@ export default function PupilCardPage() {
           <TabsTrigger value="lessons">Занятия</TabsTrigger>
           <TabsTrigger value="progress">Динамика</TabsTrigger>
           <TabsTrigger value="pmpk">Заключение</TabsTrigger>
+          <TabsTrigger value="school">Школа</TabsTrigger>
           <TabsTrigger value="docs">Документы</TabsTrigger>
           <TabsTrigger value="notes">Заметки</TabsTrigger>
         </TabsList>
@@ -367,6 +369,9 @@ export default function PupilCardPage() {
               Удалить файл
             </Button>
           </div>
+        </TabsContent>
+        <TabsContent value="school" className="space-y-3">
+          <SchoolTab pupilId={id} />
         </TabsContent>
         <TabsContent value="docs" className="space-y-3">
           <input type="file" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />

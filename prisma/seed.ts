@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { ensureAdmin } from "../src/server/admin";
+import { ensurePlanModels } from "../src/server/models";
 import { PICTURE_WORDS } from "../src/data/picture-words";
 
 const prisma = new PrismaClient();
@@ -71,6 +72,7 @@ async function main() {
     if (!exists) await prisma.pictureWord.create({ data: { ...w, isSystem: true, verified: false } });
   }
   await ensureAdmin();
+  await ensurePlanModels();
   console.log("Seed OK");
 }
 

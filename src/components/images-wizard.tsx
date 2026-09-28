@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/form";
+import { Label, Textarea } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { api } from "@/lib/api";
@@ -38,6 +38,7 @@ export function ImagesWizard() {
   const [age, setAge] = useState("4–6");
   const [style, setStyle] = useState<"outline" | "color">("outline");
   const [captions, setCaptions] = useState(true);
+  const [extra, setExtra] = useState("");
   const [pairs, setPairs] = useState(false);
   const [exclude, setExclude] = useState(true);
   const [quota, setQuota] = useState({ used: 0, limit: Infinity, left: Infinity });
@@ -94,6 +95,7 @@ export function ImagesWizard() {
           captions,
           pairs,
           excludeOpposites: exclude,
+          extra: extra.slice(0, 500),
         }),
       });
       setSet(res.set);
@@ -253,6 +255,18 @@ export function ImagesWizard() {
             <Checkbox checked={captions} onCheckedChange={(v) => setCaptions(!!v)} />
             Подписи слов на листе
           </label>
+          <div>
+            <Label htmlFor="extra-prompt">Свой промпт</Label>
+            <Textarea
+              id="extra-prompt"
+              className="mt-1"
+              maxLength={500}
+              value={extra}
+              onChange={(e) => setExtra(e.target.value.slice(0, 500))}
+              placeholder="Например: осенняя одежда, герой в шапке"
+            />
+            <p className="mt-1 text-caption text-muted-foreground">{extra.length}/500. Дописывается после правил листа.</p>
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setStep(1)}>
               Назад

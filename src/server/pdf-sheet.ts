@@ -19,6 +19,94 @@ async function loadFontBytes() {
   throw new Error("Не найден шрифт с кириллицей (установите fonts-dejavu-core)");
 }
 
+export async function buildLessonPdf(opts: {
+  title: string;
+  sound?: string;
+  nameRow: { image?: Buffer; label: string }[];
+  oddRow?: { image?: Buffer; label: string; odd?: boolean }[];
+  listenRow: { image?: Buffer; label: string }[];
+  color?: { image?: Buffer; label: string };
+}) {
+  const pdf = await PDFDocument.create();
+  pdf.registerFontkit(fontkit);
+  const font = await pdf.embedFont(await loadFontBytes());
+  const page = pdf.addPage([595.28, 841.89]);
+  const margin = 36;
+  let y = page.getHeight() - margin - 18;
+  const title = opts.sound ? `Звук [${opts.sound}]` : opts.title;
+  page.drawText(title, { x: margin, y, size: 22, font, color: rgb(0, 0, 0) });
+  y -= 28;
+
+  async function row(heading: string, cells: { image?: Buffer; label: string }[], mark: "none" | "square" | "circle" | "checks", imgH = mark === "checks" ? 70 : mark === "none" ? 110 : 86) {
+    page.drawText(heading, { x: margin, y, size: 13, font, color: rgb(0, 0, 0) });
+    y -= 8;
+    const n = Math.max(cells.length, 1);
+    const gap = 8;
+    const cellW = (page.getWidth() - margin * 2 - gap * (n - 1)) / n;
+    const top = y;
+    for (let i = 0; i < cells.length; i++) {
+      const x = margin + i * (cellW + gap);
+      const cell = cells[i];
+      if (cell.image) {
+        const embedded =
+          cell.image[0] === 0xff
+            ? await pdf.embedJpg(cell.image).catch(() => pdf.embedPng(cell.image!))
+            : await pdf.embedPng(cell.image).catch(() => pdf.embedJpg(cell.image!));
+        const scale = Math.min((cellW - 8) / embedded.width, imgH / embedded.height);
+        const w = embedded.width * scale;
+        const h = embedded.height * scale;
+        page.drawImage(embedded, { x: x + (cellW - w) / 2, y: top - h, width: w, height: h });
+      }
+      const label = cell.label;
+      const size = 12;
+      const tw = font.widthOfTextAtSize(label, size);
+      page.drawText(label, { x: x + (cellW - tw) / 2, y: top - imgH - 16, size, font, color: rgb(0, 0, 0) });
+      if (mark === "square" || mark === "circle") {
+        const s = 14;
+        const mx = x + cellW / 2 - s / 2;
+        const my = top - imgH - 36;
+        if (mark === "circle") {
+          page.drawSvgPath(`M ${mx + s} ${my + s / 2} A ${s / 2} ${s / 2} 0 1 0 ${mx} ${my + s / 2} A ${s / 2} ${s / 2} 0 1 0 ${mx + s} ${my + s / 2}`, {
+            borderWidth: 1.2,
+            borderColor: rgb(0, 0, 0),
+          });
+        } else {
+          page.drawRectangle({ x: mx, y: my, width: s, height: s, borderWidth: 1, borderColor: rgb(0, 0, 0) });
+        }
+      } else if (mark === "checks") {
+        const labels = ["в начале", "в середине", "в конце"];
+        labels.forEach((lab, k) => {
+          const bx = x + 4;
+          const by = top - imgH - 34 - k * 14;
+          page.drawRectangle({ x: bx, y: by, width: 9, height: 9, borderWidth: 1, borderColor: rgb(0, 0, 0) });
+          page.drawText(lab, { x: bx + 14, y: by, size: 9, font, color: rgb(0, 0, 0) });
+        });
+      }
+    }
+    y = top - imgH - (mark === "checks" ? 78 : mark === "none" ? 28 : 52);
+  }
+
+  await row("1. Назови картинки", opts.nameRow, "none", 100);
+  if (opts.oddRow?.length) {
+    const sound = opts.sound ? ` [${opts.sound}]` : "";
+    await row(`2. Найди лишнее. Обведи картинку без звука${sound}`, opts.oddRow, "none", 96);
+  }
+  const listenNo = opts.oddRow?.length ? "3" : "2";
+  await row(`${listenNo}. Где звук${opts.sound ? ` [${opts.sound}]` : ""}?`, opts.listenRow, "checks");
+  if (opts.color) {
+    const colorNo = opts.oddRow?.length ? "4" : "3";
+    await row(`${colorNo}. Раскрась и назови слово`, [opts.color], "none", 130);
+  }
+  page.drawText("Изображения созданы ИИ. Проверьте перед печатью.", {
+    x: margin,
+    y: 28,
+    size: 9,
+    font,
+    color: rgb(0.3, 0.3, 0.3),
+  });
+  return Buffer.from(await pdf.save());
+}
+
 export async function buildPagePdf(image: Buffer) {
   const pdf = await PDFDocument.create();
   const page = pdf.addPage([595.28, 841.89]);

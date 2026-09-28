@@ -18,7 +18,7 @@ export const env = {
   aiApiKey: req("AI_API_KEY"),
   aiModelBasic: req("AI_MODEL_BASIC", "openai/gpt-4o-mini"),
   aiModelAdvanced: req("AI_MODEL_ADVANCED", "openai/gpt-4o"),
-  aiImageModel: req("AI_IMAGE_MODEL", "google/gemini-3.1-flash-lite-image"),
+  aiImageModel: req("AI_IMAGE_MODEL", "openai/gpt-image-2.5-sunburst"),
   aiImageQuality: req("AI_IMAGE_QUALITY", "medium"),
   smtpHost: req("SMTP_HOST"),
   smtpPort: Number(req("SMTP_PORT", "465")),

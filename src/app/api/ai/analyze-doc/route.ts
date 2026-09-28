@@ -32,7 +32,7 @@ export const POST = withAuth(async (req, user) => {
       : body.mode === "fgos"
         ? promptFgocChecklist(text)
         : promptDocAnalysis(text);
-  const { content, tokens, model } = await chatText(user.id, SYSTEM_LOGOPED, prompt);
+  const { content, tokens, model, cost } = await chatText(user.id, SYSTEM_LOGOPED, prompt);
   let parsed: unknown = content;
   try {
     const m = content.match(/\{[\s\S]*\}/);
@@ -49,7 +49,7 @@ export const POST = withAuth(async (req, user) => {
       resultJson: parsed as object,
     },
   });
-  await bumpUsage(user.id, { tokens, analyses: 1 });
+  await bumpUsage(user.id, { tokens, analyses: 1, costRub: typeof cost === "number" ? cost : 10 });
   const limits = await getLimits(user.id);
   return NextResponse.json({ analysis, plan: limits.plan });
 });

@@ -5,6 +5,7 @@ import { SYSTEM_LOGOPED, promptDiagnostics, promptProgram, promptConclusion, pro
 import { assertGeneration, bumpUsage } from "@/server/limits";
 import { GenerationKind } from "@prisma/client";
 import { pupilOwned, serializePupil } from "@/server/pupils";
+import { pupilMaterials } from "@/server/pupil-materials";
 
 const TITLES: Record<GenerationKind, string> = {
   DIAGNOSTICS: "Протокол диагностики",
@@ -22,6 +23,7 @@ export const POST = withAuth(async (req, user) => {
     const p = await pupilOwned(user.id, body.pupilId);
     pupilData = serializePupil(p);
   }
+  const materials = body.pupilId ? await pupilMaterials(user.id, body.pupilId) : "";
   const input = {
     extra: body.extra,
     grade: pupilData?.grade,
@@ -30,7 +32,7 @@ export const POST = withAuth(async (req, user) => {
     aopVariant: pupilData?.aopVariant,
     notes: body.notes,
   };
-  const prompt =
+  const base =
     kind === "DIAGNOSTICS"
       ? promptDiagnostics(input)
       : kind === "PROGRAM"
@@ -38,6 +40,7 @@ export const POST = withAuth(async (req, user) => {
         : kind === "CONCLUSION"
           ? promptConclusion(input)
           : promptTasks(input);
+  const prompt = materials ? `${base}\n\nМатериалы карточки:\n${materials}` : base;
   const title = `${TITLES[kind]}${pupilData ? " — ученик" : ""}`;
   const gen = await prisma.aiGeneration.create({
     data: { userId: user.id, pupilId: body.pupilId || null, kind, title, content: "", modelUsed: "pending" },
@@ -51,11 +54,11 @@ export const POST = withAuth(async (req, user) => {
       };
       send("start", { id: gen.id });
       try {
-        const { content, tokens, model } = await chatStream(user.id, SYSTEM_LOGOPED, prompt, (delta) => {
+        const { content, tokens, model, cost } = await chatStream(user.id, SYSTEM_LOGOPED, prompt, (delta) => {
           send("delta", { text: delta });
         });
         await prisma.aiGeneration.update({ where: { id: gen.id }, data: { content, modelUsed: model } });
-        await bumpUsage(user.id, { tokens, generations: 1 });
+        await bumpUsage(user.id, { tokens, generations: 1, costRub: typeof cost === "number" ? cost : 12 });
         send("done", { id: gen.id, content, title });
       } catch (e) {
         send("error", { message: e instanceof Error ? e.message : "Ошибка генерации" });

@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PasswordInput } from "@/components/password-input";
 import { WorkingHoursEditor, WorkingHour } from "@/components/working-hours-editor";
+import { BellsEditor, ModelPick } from "@/components/bells-editor";
 import { api } from "@/lib/api";
 import { PLAN_LABELS } from "@/lib/labels";
 import { formatBytes } from "@/lib/utils";
@@ -116,6 +117,8 @@ function SettingsInner() {
             </span>
             <Switch checked={u.aiPmpkAutoAnalyze !== false} onCheckedChange={(v) => save({ aiPmpkAutoAnalyze: v })} />
           </label>
+          <BellsEditor />
+          <ModelPick />
         </TabsContent>
         <TabsContent value="security" className="max-w-xl space-y-4">
           <form
@@ -173,6 +176,12 @@ function SettingsInner() {
             <>
               <p className="text-small text-muted-foreground">Хранилище: {formatBytes(me.storageUsed)} из {formatBytes(lim.storageBytes)}</p>
               <Progress value={usedPct} />
+              <p className="text-small text-muted-foreground">
+                ИИ в этом месяце: {me.usage?.imagesCount || 0} из {lim.imagesPerMonth} листов, {me.usage?.generationsCount || 0} из {lim.generationsPerMonth} текстов, {me.usage?.analysesCount || 0} из {lim.analysesPerMonth} анализов.
+              </p>
+              <p className="text-small text-muted-foreground">
+                Потолок: {Math.round((me.usage?.costRub || 0) * 100) / 100} ₽ из {lim.rubCeiling} ₽. Срабатывает тот лимит, который наступил раньше.
+              </p>
             </>
           )}
           {lim.unlimited && <p className="text-small text-muted-foreground">Лимиты сняты.</p>}
