@@ -638,6 +638,15 @@ model PlanModelAllow {
   @@unique([plan, modelId, kind])
 }
 
+model ModelCatalogHide {
+  id        String    @id @default(cuid())
+  modelId   String
+  kind      ModelKind
+  createdAt DateTime  @default(now())
+
+  @@unique([modelId, kind])
+}
+
 model AiGeneration {
   id        String         @id @default(cuid())
   userId    String

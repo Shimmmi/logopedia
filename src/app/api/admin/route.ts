@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser, jsonError } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { issueVerification } from "@/server/verify-email";
-import { ensurePlanModels, JOB_NORM, normFor } from "@/server/models";
-import { env } from "@/server/env";
+import { ensurePlanModels, hideCatalogModel, JOB_NORM, loadCatalog, normFor, restoreCatalogModel } from "@/server/models";
 import { ModelKind, Plan } from "@prisma/client";
 
 async function admin(req: NextRequest) {
@@ -23,23 +22,20 @@ export async function GET(req: NextRequest) {
     });
     if (req.nextUrl.searchParams.get("part") === "models") {
       await ensurePlanModels();
-      const allows = await prisma.planModelAllow.findMany({ orderBy: [{ plan: "asc" }, { kind: "asc" }, { modelId: "asc" }] });
-      let catalog: { id: string; kind: "TEXT" | "IMAGE" }[] = [];
-      if (env.aiApiKey) {
-        const res = await fetch(`${env.aiBaseUrl.replace(/\/$/, "")}/models`, {
-          headers: { Authorization: `Bearer ${env.aiApiKey}` },
-        });
-        if (res.ok) {
-          const data = (await res.json()) as { data?: { id?: string; architecture?: { output_modalities?: string[] } }[] };
-          catalog = (data.data || [])
-            .filter((m) => m.id)
-            .map((m) => ({
-              id: m.id as string,
-              kind: (m.architecture?.output_modalities || []).includes("image") ? "IMAGE" : "TEXT",
-            }));
-        }
-      }
-      return NextResponse.json({ allows, catalog, norms: JOB_NORM });
+      const force = req.nextUrl.searchParams.get("refresh") === "1";
+      const [allows, all, hiddenRows] = await Promise.all([
+        prisma.planModelAllow.findMany({ orderBy: [{ plan: "asc" }, { kind: "asc" }, { modelId: "asc" }] }),
+        loadCatalog(force),
+        prisma.modelCatalogHide.findMany({ orderBy: { modelId: "asc" } }),
+      ]);
+      const hiddenKeys = new Set(hiddenRows.map((h) => `${h.kind}:${h.modelId}`));
+      const catalog = all.filter((m) => !hiddenKeys.has(`${m.kind}:${m.id}`));
+      return NextResponse.json({
+        allows,
+        catalog,
+        hidden: hiddenRows.map((h) => ({ id: h.modelId, kind: h.kind })),
+        norms: JOB_NORM,
+      });
     }
     return NextResponse.json({
       users: users.map((u) => ({
@@ -67,6 +63,16 @@ export async function POST(req: NextRequest) {
         create: { userId: body.userId, plan: body.plan, status: "ACTIVE" },
         update: { plan: body.plan, status: "ACTIVE" },
       });
+    }
+    if (body.action === "hide" || body.action === "restore") {
+      const kind = body.kind as ModelKind;
+      const modelId = String(body.modelId || "");
+      if (!modelId || (kind !== "TEXT" && kind !== "IMAGE")) {
+        return NextResponse.json({ error: "Не указана модель" }, { status: 400 });
+      }
+      if (body.action === "hide") await hideCatalogModel(modelId, kind);
+      else await restoreCatalogModel(modelId, kind);
+      return NextResponse.json({ ok: true });
     }
     if (body.action === "model") {
       const plan = body.plan as Plan;
