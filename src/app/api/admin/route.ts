@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser, jsonError } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { issueVerification } from "@/server/verify-email";
-import { ensurePlanModels, hideCatalogModel, JOB_NORM, loadCatalog, normFor, restoreCatalogModel } from "@/server/models";
+import { ensurePlanModels, hideCatalogModel, hideCatalogModels, JOB_NORM, loadCatalog, normFor, restoreCatalogModel } from "@/server/models";
 import { ModelKind, Plan } from "@prisma/client";
 
 async function admin(req: NextRequest) {
@@ -63,6 +63,16 @@ export async function POST(req: NextRequest) {
         create: { userId: body.userId, plan: body.plan, status: "ACTIVE" },
         update: { plan: body.plan, status: "ACTIVE" },
       });
+    }
+    if (body.action === "hide-many") {
+      const items = Array.isArray(body.items) ? body.items : [];
+      const parsed = items
+        .map((item: { modelId?: string; kind?: string }) => ({ modelId: String(item?.modelId || ""), kind: item?.kind as ModelKind }))
+        .filter((item: { modelId: string; kind: ModelKind }) => item.modelId && (item.kind === "TEXT" || item.kind === "IMAGE"))
+        .slice(0, 500);
+      if (!parsed.length) return NextResponse.json({ error: "Не указаны модели" }, { status: 400 });
+      await hideCatalogModels(parsed);
+      return NextResponse.json({ ok: true, count: parsed.length });
     }
     if (body.action === "hide" || body.action === "restore") {
       const kind = body.kind as ModelKind;

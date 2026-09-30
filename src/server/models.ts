@@ -140,15 +140,29 @@ export async function ensurePlanModels() {
   }
 }
 
-export async function hideCatalogModel(modelId: string, kind: ModelKind) {
-  await prisma.modelCatalogHide.upsert({
-    where: { modelId_kind: { modelId, kind } },
-    create: { modelId, kind },
-    update: {},
+export async function hideCatalogModels(items: { modelId: string; kind: ModelKind }[]) {
+  const unique = Array.from(new Map(items.map((item) => [`${item.kind}:${item.modelId}`, item])).values());
+  if (!unique.length) return;
+  await prisma.$transaction(async (tx) => {
+    for (const item of unique) {
+      await tx.modelCatalogHide.upsert({
+        where: { modelId_kind: { modelId: item.modelId, kind: item.kind } },
+        create: { modelId: item.modelId, kind: item.kind },
+        update: {},
+      });
+    }
+    await tx.planModelAllow.deleteMany({
+      where: { OR: unique.map((item) => ({ modelId: item.modelId, kind: item.kind })) },
+    });
+    const textIds = unique.filter((item) => item.kind === "TEXT").map((item) => item.modelId);
+    const imageIds = unique.filter((item) => item.kind === "IMAGE").map((item) => item.modelId);
+    if (textIds.length) await tx.user.updateMany({ where: { textModel: { in: textIds } }, data: { textModel: null } });
+    if (imageIds.length) await tx.user.updateMany({ where: { imageModel: { in: imageIds } }, data: { imageModel: null } });
   });
-  await prisma.planModelAllow.deleteMany({ where: { modelId, kind } });
-  if (kind === "TEXT") await prisma.user.updateMany({ where: { textModel: modelId }, data: { textModel: null } });
-  else await prisma.user.updateMany({ where: { imageModel: modelId }, data: { imageModel: null } });
+}
+
+export async function hideCatalogModel(modelId: string, kind: ModelKind) {
+  await hideCatalogModels([{ modelId, kind }]);
 }
 
 export async function restoreCatalogModel(modelId: string, kind: ModelKind) {

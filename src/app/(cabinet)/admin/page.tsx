@@ -23,6 +23,12 @@ function priceValue(label?: string) {
   return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
 }
 
+function vendorOf(id: string) {
+  const clean = id.replace(/^~/, "");
+  const slash = clean.indexOf("/");
+  return (slash === -1 ? clean : clean.slice(0, slash)).toLowerCase();
+}
+
 export default function AdminPage() {
   const [users, setUsers] = useState<Row[]>([]);
   const [allows, setAllows] = useState<Allow[]>([]);
@@ -129,9 +135,13 @@ function AdminModels({
 }) {
   const [kind, setKind] = useState<Kind>("IMAGE");
   const [query, setQuery] = useState("");
+  const [vendor, setVendor] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [hiding, setHiding] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("model");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [hiddenOpen, setHiddenOpen] = useState(false);
+  const [hiddenQuery, setHiddenQuery] = useState("");
   const needle = query.trim().toLowerCase();
   function enabled(plan: string, model: CatalogItem) {
     return allows.some((a) => a.plan === plan && a.modelId === model.id && a.kind === model.kind) ? 1 : 0;
@@ -143,8 +153,17 @@ function AdminModels({
       setSortDir(key === "model" ? "asc" : key === "price" ? "asc" : "desc");
     }
   }
+  const vendors = Array.from(
+    catalog.filter((m) => m.kind === kind).reduce((map, model) => {
+      const name = vendorOf(model.id);
+      map.set(name, (map.get(name) || 0) + 1);
+      return map;
+    }, new Map<string, number>()),
+  )
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   const shown = catalog
-    .filter((m) => m.kind === kind && (!needle || m.id.toLowerCase().includes(needle)))
+    .filter((m) => m.kind === kind && (!vendor || vendorOf(m.id) === vendor) && (!needle || m.id.toLowerCase().includes(needle)))
     .sort((a, b) => {
       let cmp = 0;
       if (sortKey === "model") cmp = a.id.localeCompare(b.id, "ru");
@@ -182,6 +201,23 @@ function AdminModels({
     await api("/api/admin", { method: "POST", body: JSON.stringify({ action: "restore", modelId: model.id, kind: model.kind }) });
     await onChange();
   }
+  async function hideShown() {
+    if (!shown.length || hiding) return;
+    if (!window.confirm(`Убрать ${shown.length} моделей из каталога?`)) return;
+    setHiding(true);
+    try {
+      await api("/api/admin", {
+        method: "POST",
+        body: JSON.stringify({ action: "hide-many", items: shown.map((m) => ({ modelId: m.id, kind: m.kind })) }),
+      });
+      toast.success(`Убрано: ${shown.length}`);
+      await onChange();
+    } finally {
+      setHiding(false);
+    }
+  }
+  const hiddenNeedle = hiddenQuery.trim().toLowerCase();
+  const hiddenShown = hidden.filter((m) => !hiddenNeedle || m.id.toLowerCase().includes(hiddenNeedle) || vendorOf(m.id).includes(hiddenNeedle));
   return (
     <div className="mb-6 space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -203,13 +239,27 @@ function AdminModels({
       </div>
       <p className="text-caption text-muted-foreground">Картинку дороже 8 ₽ и текст дороже 12 ₽ за задание включить нельзя. Убранная строка не вернётся при обновлении.</p>
       <div className="flex flex-wrap items-end gap-2">
-        <Button type="button" variant={kind === "IMAGE" ? "default" : "outline"} onClick={() => setKind("IMAGE")}>
+        <Button type="button" variant={kind === "IMAGE" ? "default" : "outline"} onClick={() => { setKind("IMAGE"); setVendor(""); }}>
           Картинки · {counts.IMAGE}
         </Button>
-        <Button type="button" variant={kind === "TEXT" ? "default" : "outline"} onClick={() => setKind("TEXT")}>
+        <Button type="button" variant={kind === "TEXT" ? "default" : "outline"} onClick={() => { setKind("TEXT"); setVendor(""); }}>
           Текст · {counts.TEXT}
         </Button>
+        <Select value={vendor || "all"} onValueChange={(value) => setVendor(value === "all" ? "" : value)}>
+          <SelectTrigger className="w-52" aria-label="Разработчик">
+            <SelectValue placeholder="Все разработчики" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все разработчики</SelectItem>
+            {vendors.map((item) => (
+              <SelectItem key={item.name} value={item.name}>{item.name} · {item.count}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Input className="max-w-sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск по id" aria-label="Поиск модели" />
+        <Button type="button" variant="outline" disabled={!shown.length || hiding} onClick={() => hideShown().catch((err) => toast.error((err as Error).message))}>
+          {hiding ? "Убираем…" : `Убрать показанные · ${shown.length}`}
+        </Button>
       </div>
       <div className="max-h-[32rem] overflow-auto rounded-xl border border-border">
         <table className="w-full text-small">
@@ -266,17 +316,25 @@ function AdminModels({
       </div>
       {!!hidden.length && (
         <div className="space-y-2">
-          <h3 className="text-small font-medium">Скрытые · {hidden.length}</h3>
-          <ul className="space-y-1">
-            {hidden.map((m) => (
-              <li key={`${m.kind}:${m.id}`} className="flex items-center justify-between gap-2 text-small">
-                <span>{m.kind === "IMAGE" ? "картинка" : "текст"} · {m.id}</span>
-                <Button type="button" variant="outline" size="sm" onClick={() => restore(m).catch((err) => toast.error((err as Error).message))}>
-                  Вернуть
-                </Button>
-              </li>
-            ))}
-          </ul>
+          <Button type="button" variant="outline" aria-expanded={hiddenOpen} onClick={() => setHiddenOpen((open) => !open)}>
+            {hiddenOpen ? "Скрыть список" : "Скрытые"} · {hidden.length}
+          </Button>
+          {hiddenOpen && (
+            <div className="space-y-2 rounded-xl border border-border p-3">
+              <Input value={hiddenQuery} onChange={(e) => setHiddenQuery(e.target.value)} placeholder="Поиск среди скрытых" aria-label="Поиск среди скрытых" />
+              <ul className="max-h-64 space-y-1 overflow-auto">
+                {hiddenShown.map((m) => (
+                  <li key={`${m.kind}:${m.id}`} className="flex items-center justify-between gap-2 text-small">
+                    <span>{m.kind === "IMAGE" ? "картинка" : "текст"} · {m.id}</span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => restore(m).catch((err) => toast.error((err as Error).message))}>
+                      Вернуть
+                    </Button>
+                  </li>
+                ))}
+                {!hiddenShown.length && <li className="text-muted-foreground">Ничего не найдено.</li>}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>
